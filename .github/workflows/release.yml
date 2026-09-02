@@ -105,14 +105,6 @@ jobs:
           name: XAReviewer-Windows-x64
           path: XAReviewer-Windows-x64.zip
 
-      - name: Upload to Release (tag builds only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: XAReviewer-Windows-x64.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   build-macos:
     name: macOS (dmg)
     runs-on: macos-latest
@@ -147,10 +139,27 @@ jobs:
           name: XAReviewer-macOS
           path: XAReviewer-macOS.dmg
 
-      - name: Upload to Release (tag builds only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          files: XAReviewer-macOS.dmg
+          path: dist
+
+      # 仓库启用了“不可变发布”规则：已发布 Release 不能追加资产，
+      # 因此先以 draft 创建、上传全部资产后再发布。
+      - name: Create draft release and publish
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG" dist/XAReviewer-Windows-x64/XAReviewer-Windows-x64.zip \
+            dist/XAReviewer-macOS/XAReviewer-macOS.dmg \
+            --draft --verify-tag --repo "$GITHUB_REPOSITORY" \
+            --title "XAReviewer $TAG" \
+            --notes "Cross-platform release built by CI. Windows: XAReviewer-Windows-x64.zip (exe). macOS: XAReviewer-macOS.dmg."
+          gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"
