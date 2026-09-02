@@ -33,8 +33,7 @@ jobs:
             "C:\Program Files\Julia",
             "C:\Program Files\R",
             "C:\Program Files\MongoDB",
-            "$env:USERPROFILE\.nuget\packages",
-            "C:\ProgramData\chocolatey\lib\*\tools"
+            "$env:USERPROFILE\.nuget\packages"
           )
           foreach ($t in $targets) {
             if (Test-Path $t) { Remove-Item -Recurse -Force $t -ErrorAction SilentlyContinue }
