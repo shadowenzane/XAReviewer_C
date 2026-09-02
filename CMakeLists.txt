@@ -84,7 +84,22 @@ add_library(xareviewer_core STATIC
 target_link_libraries(xareviewer_core PUBLIC
   ${QT_LIBS} ${OpenCV_LIBS} ${DCMTK_LIBRARIES} ${ITK_LIBRARIES})
 target_include_directories(xareviewer_core PUBLIC src ${DCMTK_INCLUDE_DIRS} ${ITK_INCLUDE_DIRS})
-# Homebrew 的 DCMTK_LIBRARIES 为裸库名，需补充链接搜索路径
+# Homebrew 的 DCMTK_LIBRARIES 为裸库名且不带库搜索路径，需自行推导 lib 目录
+if(NOT DCMTK_LIBRARY_DIRS AND DCMTK_INCLUDE_DIRS)
+  foreach(_inc ${DCMTK_INCLUDE_DIRS})
+    if("${_inc}" MATCHES "/include$" AND IS_DIRECTORY "${_inc}/../lib")
+      get_filename_component(_lib "${_inc}/../lib" ABSOLUTE)
+      list(APPEND DCMTK_LIBRARY_DIRS "${_lib}")
+    endif()
+  endforeach()
+endif()
+if(APPLE AND NOT DCMTK_LIBRARY_DIRS)
+  foreach(_p /opt/homebrew/opt/dcmtk/lib /usr/local/opt/dcmtk/lib)
+    if(IS_DIRECTORY "${_p}")
+      list(APPEND DCMTK_LIBRARY_DIRS "${_p}")
+    endif()
+  endforeach()
+endif()
 if(DCMTK_LIBRARY_DIRS)
   target_link_directories(xareviewer_core PUBLIC ${DCMTK_LIBRARY_DIRS})
 endif()
