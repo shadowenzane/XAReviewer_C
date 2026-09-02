@@ -19,6 +19,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free disk space
+        shell: pwsh
+        run: |
+          $targets = @(
+            "C:\Android",
+            "C:\Program Files\Android",
+            "$env:LOCALAPPDATA\Android",
+            "$env:USERPROFILE\AppData\Local\Android",
+            "C:\Miniconda",
+            "C:\ProgramData\Miniconda",
+            "C:\ghcup",
+            "C:\Program Files\Julia",
+            "C:\Program Files\R",
+            "C:\Program Files\MongoDB",
+            "$env:USERPROFILE\.nuget\packages",
+            "C:\ProgramData\chocolatey\lib\*\tools"
+          )
+          foreach ($t in $targets) {
+            if (Test-Path $t) { Remove-Item -Recurse -Force $t -ErrorAction SilentlyContinue }
+          }
+          Get-PSDrive C | Select-Object Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}}
+
       - name: Restore vcpkg binary cache
         uses: actions/cache@v4
         with:
@@ -43,6 +65,9 @@ jobs:
           New-Item -ItemType Directory -Force vcpkg-bincache | Out-Null
           $vcpkg = Join-Path $env:VCPKG_INSTALLATION_ROOT 'vcpkg.exe'
           & $vcpkg install --triplet x64-windows --x-manifest-root="$PWD" "--x-install-root=$env:VCPKG_INSTALLATION_ROOT\installed"
+          # 清理源码树释放磁盘，供后续 CMake 构建使用
+          Remove-Item -Recurse -Force "$env:VCPKG_INSTALLATION_ROOT\buildtrees" -ErrorAction SilentlyContinue
+          Get-PSDrive C | Select-Object Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}}
 
       - name: Configure (CMake)
         shell: pwsh

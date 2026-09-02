@@ -6,7 +6,8 @@
     "dcmtk",
     {
       "name": "opencv4",
-      "features": ["ffmpeg"]
+      "default-features": false,
+      "features": ["jpeg", "png", "tiff", "webp"]
     },
     "itk"
   ]
