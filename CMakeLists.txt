@@ -83,7 +83,7 @@ add_library(xareviewer_core STATIC
 )
 target_link_libraries(xareviewer_core PUBLIC
   ${QT_LIBS} ${OpenCV_LIBS} ${DCMTK_LIBRARIES} ${ITK_LIBRARIES})
-target_include_directories(xareviewer_core PUBLIC src ${ITK_INCLUDE_DIRS})
+target_include_directories(xareviewer_core PUBLIC src ${DCMTK_INCLUDE_DIRS} ${ITK_INCLUDE_DIRS})
 
 add_library(xareviewer_ui STATIC
   src/ui/Theme.cpp
