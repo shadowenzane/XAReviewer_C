@@ -69,35 +69,36 @@ jobs:
           Remove-Item -Recurse -Force "$env:VCPKG_INSTALLATION_ROOT\buildtrees" -ErrorAction SilentlyContinue
           Get-PSDrive C | Select-Object Name, @{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}}
 
-      - name: Set up MSVC environment (Ninja)
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: amd64
-
-      - name: Configure (CMake)
-        shell: pwsh
+      - name: Configure, build, test and package
+        shell: cmd
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" `
-            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+          rem 定位 VS2025（runner 镜像已不含 VS2022）
+          set "VCVARS=C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Auxiliary\Build\vcvarsall.bat"
+          if exist "%VCVARS%" goto havevs
+          for /f "delims=" %%i in ('"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath') do set "VCVARS=%%i\VC\Auxiliary\Build\vcvarsall.bat"
+          :havevs
+          echo Using %VCVARS%
+          call "%VCVARS%" amd64 || exit /b 1
 
-      - name: Build
-        run: cmake --build build --parallel
+          echo === Configure ===
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_TOOLCHAIN_FILE="%VCPKG_INSTALLATION_ROOT%\scripts\buildsystems\vcpkg.cmake" ^
+            -DCMAKE_PREFIX_PATH="%QT_ROOT_DIR%" || exit /b 1
 
-      - name: Run tests
-        shell: pwsh
-        run: |
-          $env:QT_QPA_PLATFORM = 'offscreen'
-          ctest --test-dir build --output-on-failure
+          echo === Build ===
+          cmake --build build --parallel || exit /b 1
 
-      - name: Package with windeployqt
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force package | Out-Null
-          windeployqt --release --no-translations --compiler-runtime build\xareviewer.exe --dir package
-          Copy-Item build\xareviewer.exe package\
-          Copy-Item build\core_smoke.exe, build\ui_smoke.exe package\ -ErrorAction SilentlyContinue
-          Compress-Archive -Path package\* -DestinationPath XAReviewer-Windows-x64.zip
+          echo === Tests ===
+          set QT_QPA_PLATFORM=offscreen
+          ctest --test-dir build --output-on-failure || exit /b 1
+
+          echo === Package ===
+          mkdir package
+          windeployqt --release --no-translations --compiler-runtime build\xareviewer.exe --dir package || exit /b 1
+          copy build\xareviewer.exe package\ >nul
+          if exist build\core_smoke.exe copy build\core_smoke.exe package\ >nul
+          if exist build\ui_smoke.exe copy build\ui_smoke.exe package\ >nul
+          powershell -Command "Compress-Archive -Path package\* -DestinationPath XAReviewer-Windows-x64.zip" || exit /b 1
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
