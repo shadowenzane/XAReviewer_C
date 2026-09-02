@@ -1,0 +1,124 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Windows x64 (exe)
+    runs-on: windows-latest
+    env:
+      VCPKG_BINARY_SOURCES: 'clear;files,${{ github.workspace }}/vcpkg-bincache,readwrite'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: vcpkg-bincache
+          key: vcpkg-binaries-windows-x64-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            vcpkg-binaries-windows-x64-
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.*'
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          archives: qtbase qtsvg qttools
+          cache: true
+
+      - name: Install dependencies (vcpkg)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force vcpkg-bincache | Out-Null
+          $vcpkg = Join-Path $env:VCPKG_INSTALLATION_ROOT 'vcpkg.exe'
+          & $vcpkg install --triplet x64-windows --x-manifest-root="$PWD" "--x-install-root=$env:VCPKG_INSTALLATION_ROOT\installed"
+
+      - name: Configure (CMake)
+        shell: pwsh
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT\scripts\buildsystems\vcpkg.cmake" `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          ctest --test-dir build -C Release --output-on-failure
+
+      - name: Package with windeployqt
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          windeployqt --release --no-translations --compiler-runtime build\Release\xareviewer.exe --dir package
+          Copy-Item build\Release\xareviewer.exe package\
+          Copy-Item build\Release\core_smoke.exe, build\Release\ui_smoke.exe package\ -ErrorAction SilentlyContinue
+          Compress-Archive -Path package\* -DestinationPath XAReviewer-Windows-x64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XAReviewer-Windows-x64
+          path: XAReviewer-Windows-x64.zip
+
+      - name: Upload to Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: XAReviewer-Windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos:
+    name: macOS (dmg)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Homebrew)
+        run: |
+          brew install qt dcmtk opencv itk create-dmg
+
+      - name: Configure (CMake)
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt);$(brew --prefix opencv);$(brew --prefix dcmtk);$(brew --prefix itk)"
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Run tests
+        run: |
+          QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+
+      - name: Create DMG
+        run: |
+          macdeployqt build/xareviewer.app -dmg -always-overwrite -verbose=1
+          mv build/xareviewer.dmg XAReviewer-macOS.dmg
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XAReviewer-macOS
+          path: XAReviewer-macOS.dmg
+
+      - name: Upload to Release (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: XAReviewer-macOS.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

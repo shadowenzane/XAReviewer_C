@@ -1,0 +1,13 @@
+{
+  "name": "xareviewer",
+  "version": "1.0.0",
+  "description": "XAReviewer C++ (Qt + DCMTK + ITK + OpenCV)",
+  "dependencies": [
+    "dcmtk",
+    {
+      "name": "opencv4",
+      "features": ["ffmpeg"]
+    },
+    "itk"
+  ]
+}
