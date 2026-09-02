@@ -84,6 +84,10 @@ add_library(xareviewer_core STATIC
 target_link_libraries(xareviewer_core PUBLIC
   ${QT_LIBS} ${OpenCV_LIBS} ${DCMTK_LIBRARIES} ${ITK_LIBRARIES})
 target_include_directories(xareviewer_core PUBLIC src ${DCMTK_INCLUDE_DIRS} ${ITK_INCLUDE_DIRS})
+# Homebrew 的 DCMTK_LIBRARIES 为裸库名，需补充链接搜索路径
+if(DCMTK_LIBRARY_DIRS)
+  target_link_directories(xareviewer_core PUBLIC ${DCMTK_LIBRARY_DIRS})
+endif()
 
 add_library(xareviewer_ui STATIC
   src/ui/Theme.cpp
