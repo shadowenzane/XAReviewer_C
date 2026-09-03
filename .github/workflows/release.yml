@@ -130,8 +130,23 @@ jobs:
 
       - name: Create DMG
         run: |
-          macdeployqt build/xareviewer.app -dmg -always-overwrite -verbose=1
-          mv build/xareviewer.dmg XAReviewer-macOS.dmg
+          set -euxo pipefail
+          # 只部署依赖，不用 macdeployqt 的 -dmg（其生成的镜像在部分 macOS 上无法挂载）
+          macdeployqt build/xareviewer.app -always-overwrite -verbose=1 || true
+          # macdeployqt 改写二进制后 arm64 签名失效，重新做 ad-hoc 签名避免“已损坏”提示
+          codesign --force --deep --sign - build/xareviewer.app
+          codesign --verify --deep build/xareviewer.app
+          # 组装拖拽安装布局，用 hdiutil 生成标准 UDZO/HFS+ 镜像
+          rm -rf dmg-staging && mkdir -p dmg-staging
+          cp -R build/xareviewer.app dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "XAReviewer" \
+            -srcfolder dmg-staging \
+            -ov -format UDZO -fs "HFS+J" \
+            XAReviewer-macOS.dmg
+          # CI 内直接校验镜像可挂载，杜绝坏镜像发布
+          hdiutil verify XAReviewer-macOS.dmg
+          hdiutil imageinfo XAReviewer-macOS.dmg | grep -E "Format:|Filesystem Name:"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -157,9 +172,25 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          gh release create "$TAG" dist/XAReviewer-Windows-x64/XAReviewer-Windows-x64.zip \
-            dist/XAReviewer-macOS/XAReviewer-macOS.dmg \
+          WIN=dist/XAReviewer-Windows-x64/XAReviewer-Windows-x64.zip
+          MAC=dist/XAReviewer-macOS/XAReviewer-macOS.dmg
+          {
+            echo "Cross-platform release built by CI."
+            echo ""
+            echo "- Windows x64: \`XAReviewer-Windows-x64.zip\`（解压后运行 xareviewer.exe）"
+            echo "- macOS (Apple Silicon): \`XAReviewer-macOS.dmg\`"
+            echo ""
+            echo "## macOS 首次打开"
+            echo "App 为 ad-hoc 签名，首次打开若提示无法验证开发者：右键 App → 打开 → 再点\"打开\"；"
+            echo "或执行 \`xattr -cr /Applications/xareviewer.app\` 后双击打开。"
+            echo ""
+            echo "## SHA256"
+            echo '```'
+            sha256sum "$WIN" "$MAC"
+            echo '```'
+          } > NOTES.md
+          gh release create "$TAG" "$WIN" "$MAC" \
             --draft --verify-tag --repo "$GITHUB_REPOSITORY" \
             --title "XAReviewer $TAG" \
-            --notes "Cross-platform release built by CI. Windows: XAReviewer-Windows-x64.zip (exe). macOS: XAReviewer-macOS.dmg."
+            --notes-file NOTES.md
           gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"
