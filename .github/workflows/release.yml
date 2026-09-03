@@ -94,9 +94,13 @@ jobs:
           echo === Package ===
           mkdir package
           windeployqt --release --no-translations --compiler-runtime build\xareviewer.exe --dir package || exit /b 1
+          rem vcpkg 动态依赖（OpenCV/DCMTK/ITK 等 DLL）windeployqt 不会部署，需手动复制
+          copy "%VCPKG_INSTALLATION_ROOT%\installed\x64-windows\bin\*.dll" package\ >nul || exit /b 1
           copy build\xareviewer.exe package\ >nul
           if exist build\core_smoke.exe copy build\core_smoke.exe package\ >nul
           if exist build\ui_smoke.exe copy build\ui_smoke.exe package\ >nul
+          rem 校验关键 DLL 已进入包内
+          dir package\opencv_core*.dll package\dcmdata*.dll || exit /b 1
           powershell -Command "Compress-Archive -Path package\* -DestinationPath XAReviewer-Windows-x64.zip" || exit /b 1
 
       - name: Upload artifact
